@@ -1,0 +1,6 @@
+chatd
+chatd.db
+chatd.db-wal
+chatd.db-shm
+chatd_host_key
+chatd_host_key.pub
