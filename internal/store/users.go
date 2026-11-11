@@ -171,3 +171,26 @@ func (s *Store) DeleteUser(nick string) error {
 }
 
 func (s *Store) RenameUser(id int64, newNick string) (User, error){
+	if !ValidNick(newNick) {
+		return User{}, ErrBadNick
+	}
+	u, err := s.UserByID(id)
+	if err != nil { return User{},err }
+	now := s.Now()
+	if !u.NickChangedAt.IsZero() {
+		if until := u.NickChangedAt.Add(NickCooldown); now.Before(until) {
+			return User{}, &CooldownError{Until: until}
+		}
+	}
+	var otherID int64
+	err = s.db.QueryRow(`SELECT id FROM users WHERE nick = ?`, newNick).Scan(&otherID)
+	if err == nil && otherID != id {
+		return User{}, ErrNickTaken
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) { return User{}, err }
+	_, err = s.db.Exec(`UPDATE users SET nick = ?, nick_changed_at = ? WHERE id = ?`, newNick, now.Unix(), id)
+	if err != nil{
+		return User{}, err
+	}
+	return s.UserByID(id)
+}
