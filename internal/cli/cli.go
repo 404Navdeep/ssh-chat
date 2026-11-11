@@ -1,34 +1,53 @@
-// Package cli runs the chatd command line.
 package cli
 
 import (
 	"fmt"
 	"io"
 
+	"sshchat/internal/admin"
 	"sshchat/internal/config"
+	"sshchat/internal/store"
 )
 
-// Run runs one chatd command and returns the process exit code.
 func Run(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
 	cfg := config.FromEnv(getenv)
 	if len(args) == 0 || isHelp(args[0]) {
 		printUsage(stdout, cfg)
 		return 0
 	}
+	if admin.IsCommand(args[0]) { return runAdmin(cfg, args, stdout, stderr) }
 	fmt.Fprintf(stderr, "chatd: unknown command %q\n\n", args[0])
 	printUsage(stderr, cfg)
+
 	return 2
 }
-
 func isHelp(arg string) bool {
 	return arg == "help" || arg == "-h" || arg == "--help"
 }
 
+func runAdmin(cfg config.Config, args []string, stdout, stderr io.Writer) int{
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "chatd: %v\n", err)
+		return 1
+	}
+	defer st.Close()
+	if err := admin.Run(st, args, stdout); err != nil {
+		fmt.Fprintf(stderr, "chatd: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
 func printUsage(w io.Writer, cfg config.Config) {
+
 	fmt.Fprintln(w, "chatd - an SSH chat server")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  chatd help")
+	for _,line := range admin.Usage() {
+		fmt.Fprintf(w, "  chatd %s\n", line)
+	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Settings (environment variables):")
 	fmt.Fprintf(w, "  CHATD_LISTEN    address to listen on (now: %s)\n", cfg.Listen)
